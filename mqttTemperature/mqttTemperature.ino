@@ -59,6 +59,8 @@ DHT dht(DHTPIN, DHTTYPE);
 float temp;
 float hum;
 
+bool intended_disconnect=false;
+
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
 
@@ -73,6 +75,10 @@ void connectToWifi() {
   Serial.println("Connecting to Wi-Fi...");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
+void disconnectFromWifi(){
+  Serial.println("Disconnecting from Wi-Fi..."); 
+  WiFi.mode(WIFI_OFF);
+}
 
 void onWifiConnect(const WiFiEventStationModeGotIP& event) {
   Serial.println("Connected to Wi-Fi.");
@@ -82,7 +88,9 @@ void onWifiConnect(const WiFiEventStationModeGotIP& event) {
 void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
   Serial.println("Disconnected from Wi-Fi.");
   mqttReconnectTimer.detach(); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
+  if(!intended_disconnect){
   wifiReconnectTimer.once(2, connectToWifi);
+  }
 }
 
 void connectToMqtt() {
@@ -150,7 +158,7 @@ void loop() {
   unsigned long currentMillis = millis();
   // Every X number of seconds (interval = 10 seconds) 
   // it publishes a new MQTT message
-  if (currentMillis - previousMillis >= interval) {
+  if ((currentMillis - previousMillis >= interval)&& mqttClient.connected()) {
     // Save the last time a new reading was published
     previousMillis = currentMillis;
     // New DHT sensor readings
@@ -159,18 +167,27 @@ void loop() {
     temp = dht.readTemperature();
     // Read temperature as Fahrenheit (isFahrenheit = true)
     //temp = dht.readTemperature(true);
-    digitalWrite(LEDPIN,HIGH);
-    // Publish an MQTT message on topic esp/dht/temperature
-    uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 1, true, String(temp).c_str());                            
-    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP, packetIdPub1);
-    Serial.printf("Message: %.2f \n", temp);
 
-    // Publish an MQTT message on topic esp/dht/humidity
-    uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 1, true, String(hum).c_str());                            
-    Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_HUM, packetIdPub2);
-    Serial.printf("Message: %.2f \n", hum);
+    if(mqttClient.connected()){ // only attempt to send when connected
+      digitalWrite(LEDPIN,HIGH);
+      // Publish an MQTT message on topic esp/dht/temperature
+      uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 1, true, String(temp).c_str());                            
+      Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP, packetIdPub1);
+      Serial.printf("Message: %.2f \n", temp);
+  
+      // Publish an MQTT message on topic esp/dht/humidity
+      uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 1, true, String(hum).c_str());                            
+      Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_HUM, packetIdPub2);
+      Serial.printf("Message: %.2f \n", hum);
+//      intended_disconnect=true;
+      }
+    
   }
   else if(digitalRead(LEDPIN)){
-    digitalWrite(LEDPIN,LOW);
+      digitalWrite(LEDPIN,LOW);
+    }
+  if(intended_disconnect && WiFi.isConnected()){
+    disconnectFromWifi();
+    intended_disconnect=false;
   }
 }
