@@ -58,9 +58,11 @@ DHT dht(DHTPIN, DHTTYPE);
 // Variables to hold sensor readings
 float temp;
 float hum;
-
+float temp_old;
+float hum_old;
 bool intended_disconnect=false;
-
+int counter_disconnect=0;
+int counter_connect=5;
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
 
@@ -72,8 +74,10 @@ unsigned long previousMillis = 0;   // Stores last time temperature was publishe
 const long interval = 10000;        // Interval at which to publish sensor readings
 
 void connectToWifi() {
+  if(!intended_disconnect){
   Serial.println("Connecting to Wi-Fi...");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  }
 }
 void disconnectFromWifi(){
   Serial.println("Disconnecting from Wi-Fi..."); 
@@ -158,15 +162,42 @@ void loop() {
   unsigned long currentMillis = millis();
   // Every X number of seconds (interval = 10 seconds) 
   // it publishes a new MQTT message
-  if ((currentMillis - previousMillis >= interval)&& mqttClient.connected()) {
+  if (currentMillis - previousMillis >= interval) {
+    Serial.printf("Counter Connect: %d\nCounter disconnect: %d\n",counter_connect,counter_disconnect);
     // Save the last time a new reading was published
     previousMillis = currentMillis;
     // New DHT sensor readings
     hum = dht.readHumidity();
     // Read temperature as Celsius (the default)
     temp = dht.readTemperature();
+    Serial.printf("Measured temp: %f \nMeasured humidity: %f\n",temp,hum);
     // Read temperature as Fahrenheit (isFahrenheit = true)
     //temp = dht.readTemperature(true);
+      if(fabs(temp-temp_old)<0.1 && fabs(hum-hum_old)<0.1){
+        if(counter_disconnect>=5){
+          
+          intended_disconnect=true;
+          counter_disconnect=0;
+          counter_connect=0;
+        }
+        else{
+          counter_disconnect+=1;
+          counter_connect=0;
+        }
+        }
+      else{
+        if(counter_connect >= 5){
+          temp_old=temp;
+          hum_old=hum;
+          intended_disconnect=false;
+          counter_connect=0;
+          counter_disconnect=0;
+        }
+        else{
+          counter_connect+=1;
+        }
+       }
+    Serial.printf("Intended Disconnect: %d\n",intended_disconnect);
 
     if(mqttClient.connected()){ // only attempt to send when connected
       digitalWrite(LEDPIN,HIGH);
@@ -179,15 +210,19 @@ void loop() {
       uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 1, true, String(hum).c_str());                            
       Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_HUM, packetIdPub2);
       Serial.printf("Message: %.2f \n", hum);
-//      intended_disconnect=true;
       }
+
+    if(intended_disconnect && WiFi.isConnected()){
+    Serial.println("No temperature Change. Disconnecting from wifi");
+    disconnectFromWifi();
+  }
+  else if(!intended_disconnect && !WiFi.isConnected()){
+     wifiReconnectTimer.once(2, connectToWifi);
+  }
     
   }
   else if(digitalRead(LEDPIN)){
       digitalWrite(LEDPIN,LOW);
     }
-  if(intended_disconnect && WiFi.isConnected()){
-    disconnectFromWifi();
-    intended_disconnect=false;
-  }
+  
 }
