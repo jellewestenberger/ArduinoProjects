@@ -21,7 +21,7 @@
 #endif
 
 #ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "rchtsdrndmlkzr"
+#define WIFI_PASSWORD "YOUR wifi SSID here"
 #endif
 
 
@@ -62,6 +62,7 @@ float temp;
 float hum;
 int light; 
 float light_avg;
+float light_outlier=300;
 float temp_old;
 float temp_avg;
 float hum_avg;
@@ -182,9 +183,17 @@ void loop() {
   // it publishes a new MQTT message
   if(currentMillis-previousMillis_light >= interval_light){
     light = analogRead(LIGHTSENSOR)*(3300/1024);
+    delay(100);
+    if(fabs(light)>2000){
+      light_outlier=light;
+      light=light_old;
+    }
     light_avg=(light_avg*counter_light_avg+(float)light)/(counter_light_avg+1);
     counter_light_avg+=1;  
     Serial.printf("Measured light: %i, Average: %f [3.3/1024 V]\n",light,light_avg);
+    if(light_outlier!=300){
+      Serial.printf("Last light outlier: %f\n",light_outlier);
+    }
     previousMillis_light=currentMillis;
   }
   if (currentMillis - previousMillis_dht >= interval_dht) {
@@ -196,9 +205,17 @@ void loop() {
     hum = dht.readHumidity();
     // Read temperature as Celsius (the default)
     temp = dht.readTemperature();
+    delay(100);
 
     temp_avg=(temp_avg*counter_dht_avg+temp)/(counter_dht_avg+1);
     hum_avg=(hum_avg*counter_dht_avg+hum)/(counter_dht_avg+1);
+
+    if(isnan(temp_avg)||isnan(hum_avg)){
+      Serial.printf("dht error isnan. temp:%f, hum:%f,counter_dht_avg:%i\n",temp,hum,counter_dht_avg);
+      temp_avg=temp_old;
+      hum_avg=hum_old;
+    }
+
     counter_dht_avg+=1;
     
     Serial.printf("Measured temp: %f, Average temp: %f, temp_old: %f, temp_sent: %f \nMeasured humidity: %f, Average Humidity: %f, hum_old: %f, hum_sent: %f\n",temp,temp_avg,temp_old,temp_sent,hum,hum_avg,hum_old,hum_sent);
@@ -206,7 +223,7 @@ void loop() {
   }
 
   if (currentMillis-previousMillis_send >= interval_send){
-    Serial.printf("Counter Connect: %d\nCounter disconnect: %d\n",counter_connect,counter_disconnect);
+    Serial.printf("\nCounter Connect: %d\nCounter Disconnect: %d\n",counter_connect,counter_disconnect);
     // Read temperature as Fahrenheit (isFahrenheit = true)
     //temp = dht.readTemperature(true);
       previousMillis_send=currentMillis;
@@ -244,26 +261,26 @@ void loop() {
        }
       if(mqttClient.connected()){ // only attempt to send when connected
          // Publish an MQTT message on topic esp/dht/light
-        if(light_avg!=light_sent){
-        uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg*(3300/1024)).c_str());                            
-        Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub1);
+       
+        uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg*(3300/1024)).c_str());                            
+        Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub3);
         Serial.printf("Message: %.2f [mV]\n", light_avg*(3300/1024));
         light_sent=light_avg;
-        }
+        
         // Publish an MQTT message on topic esp/dht/temperature
-        if(temp_avg!=temp_sent){
+        
         uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 1, true, String(temp_avg).c_str());                            
         Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP, packetIdPub1);
         Serial.printf("Message: %.2f \n", temp_avg);
         temp_sent=temp_avg;
-        }
+        
         // Publish an MQTT message on topic esp/dht/humidity
-        if(hum_avg!=hum_sent){
+        
         uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 1, true, String(hum_avg).c_str());                            
         Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_HUM, packetIdPub2);
         Serial.printf("Message: %.2f \n", hum_avg);
         hum_sent=hum_avg;
-        }
+        
       }
        
     Serial.printf("Intended Disconnect: %d\n",intended_disconnect);
