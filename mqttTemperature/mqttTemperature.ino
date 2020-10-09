@@ -11,26 +11,19 @@
 
 #include "DHT.h"
 #include <ESP8266WiFi.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h>  
 #include <Ticker.h>
 #include <AsyncMqttClient.h>
 #include "Credentials.h" // contains WIFI_SSID and WIFI_PASSWORD (hidden away from git for obvious reasons)
 
 // Wifi Credentials
-#ifndef WIFI_SSID
-#define WIFI_SSID "Your wifi SSID here"
-#endif
-
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "YOUR wifi SSID here"
-#endif
-
+#ifndef __CREDENTIALS_H
+#define AP_PASSWORD "Your accesspoint password  here"
 
 // Broker credentials (comment away if  you don't need a broker) Lower in this file
-#ifndef BROKER_USER
 #define BROKER_USER "your broker username"
-#endif
-
-#ifndef BROKER_PASSWORD
 #define BROKER_PASSWORD "your broker password" 
 #endif
 
@@ -49,6 +42,7 @@
 #define DHTPIN 14  
 #define LEDPIN 3
 #define LIGHTSENSOR A0
+
 // Uncomment whatever DHT sensor type you're using
 #define DHTTYPE DHT11   // DHT 11
 //#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
@@ -63,26 +57,32 @@ float hum;
 int light; 
 float light_avg;
 float light_outlier=300;
+int counter_light_avg = 0;
 float temp_old;
 float temp_avg;
 float hum_avg;
 float hum_old;
+int counter_dht_avg = 0;
 float light_old;
 float light_sent;
 float temp_sent;
 float hum_sent;
+
+// Variables for controlinig intentional disconnect
 bool intended_disconnect=false;
-int counter_light_avg = 0;
-int counter_dht_avg = 0;
 int counter_disconnect=0;
 int counter_connect=5;
+
+// Wifi and MQTT:
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
 
 WiFiEventHandler wifiConnectHandler;
 WiFiEventHandler wifiDisconnectHandler;
+WiFiManager wifiManager;
 Ticker wifiReconnectTimer;
 
+// Time settings
 unsigned long previousMillis_dht = 0;   // Stores last time temperature was published
 unsigned long previousMillis_send=0;
 unsigned long previousMillis_forced =0; // stores last time an hourly update was given (send values after an hour even when measurements were constant)
@@ -91,10 +91,13 @@ const long interval_dht = 10000;        // Interval at which to publish sensor r
 const long interval_light = 2000;
 const long forced_interval = 600000; //every 10mins
 const long interval_send = 60000;
+unsigned long currentMillis= 1;
+
 void connectToWifi() {
   if(!intended_disconnect){
   Serial.println("Connecting to Wi-Fi...");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  // WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  wifiManager.autoConnect("ESPConnect",AP_PASSWORD);
   }
 }
 void disconnectFromWifi(){
@@ -155,50 +158,24 @@ void onMqttPublish(uint16_t packetId) {
   Serial.println(packetId);
 }
 
-void setup() {
-  Serial.begin(115200);
-  Serial.println();
-  pinMode(LEDPIN,OUTPUT);
-  digitalWrite(LEDPIN,LOW);
-  dht.begin();
-  
-  wifiConnectHandler = WiFi.onStationModeGotIP(onWifiConnect);
-  wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
-
-  mqttClient.onConnect(onMqttConnect);
-  mqttClient.onDisconnect(onMqttDisconnect);
-  //mqttClient.onSubscribe(onMqttSubscribe);
-  //mqttClient.onUnsubscribe(onMqttUnsubscribe);
-  mqttClient.onPublish(onMqttPublish);
-  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-  // If your broker requires authentication (username and password), set them below
-  mqttClient.setCredentials(BROKER_USER, BROKER_PASSWORD);
-  
-  connectToWifi();
+void get_light_readings(){
+  light = analogRead(LIGHTSENSOR)*(3300/1024);
+  delay(100);
+  if(fabs(light)>2000){
+    light_outlier=light;
+    light=light_old;
+    }
+  light_avg=(light_avg*counter_light_avg+(float)light)/(counter_light_avg+1);
+  counter_light_avg+=1;  
+  Serial.printf("Measured light: %i, Average: %f [3.3/1024 V]\n",light,light_avg);
+  if(light_outlier!=300){
+    Serial.printf("Last light outlier: %f\n",light_outlier);
+    }
+  previousMillis_light=currentMillis;
 }
 
-void loop() {
-  unsigned long currentMillis = millis();
-  // Every X number of seconds (interval = 10 seconds) 
-  // it publishes a new MQTT message
-  if(currentMillis-previousMillis_light >= interval_light){
-    light = analogRead(LIGHTSENSOR)*(3300/1024);
-    delay(100);
-    if(fabs(light)>2000){
-      light_outlier=light;
-      light=light_old;
-    }
-    light_avg=(light_avg*counter_light_avg+(float)light)/(counter_light_avg+1);
-    counter_light_avg+=1;  
-    Serial.printf("Measured light: %i, Average: %f [3.3/1024 V]\n",light,light_avg);
-    if(light_outlier!=300){
-      Serial.printf("Last light outlier: %f\n",light_outlier);
-    }
-    previousMillis_light=currentMillis;
-  }
-  if (currentMillis - previousMillis_dht >= interval_dht) {
-    
-    
+void get_dht_readings(){
+   
     // Save the last time a new reading was published
     previousMillis_dht = currentMillis;
     // New DHT sensor readings
@@ -220,50 +197,64 @@ void loop() {
     
     Serial.printf("Measured temp: %f, Average temp: %f, temp_old: %f, temp_sent: %f \nMeasured humidity: %f, Average Humidity: %f, hum_old: %f, hum_sent: %f\n",temp,temp_avg,temp_old,temp_sent,hum,hum_avg,hum_old,hum_sent);
     
-  }
+}
 
-  if (currentMillis-previousMillis_send >= interval_send){
-    Serial.printf("\nCounter Connect: %d\nCounter Disconnect: %d\n",counter_connect,counter_disconnect);
-    // Read temperature as Fahrenheit (isFahrenheit = true)
-    //temp = dht.readTemperature(true);
-      previousMillis_send=currentMillis;
-      if(fabs(temp_avg-temp_old)<0.1 && fabs(hum_avg-hum_old)<0.1 && fabs(light_avg-light_old)<2){
-        if(counter_disconnect>=5){
-          
+void connect_intention(){
+  if(fabs(temp_avg-temp_old)<0.1 && fabs(hum_avg-hum_old)<0.1 && fabs(light_avg-light_old)<2){
+        if(counter_disconnect>=5){          
           intended_disconnect=true;
-          counter_disconnect=0;
-          
-         
+          counter_disconnect=0;         
         }
         else{
-          counter_disconnect+=1;
-          
+          counter_disconnect+=1;          
         }
         counter_connect=0;
         }
-      else{
-        
-        if(counter_connect >= 5){          
-          intended_disconnect=false;
-          counter_connect=0;
-          temp_old=temp_avg;
-          hum_old=hum_avg;
-          light_old=light_avg;
-          
-          
-        }
-        else{
-          counter_connect+=1;
-        }
-        counter_disconnect=0;
+  else{        
+    if(counter_connect >= 5){          
+      intended_disconnect=false;
+      counter_connect=0;
+      temp_old=temp_avg;
+      hum_old=hum_avg;
+      light_old=light_avg;          
+    }
+    else{
+      counter_connect+=1;
+    }
+    counter_disconnect=0;   
+    }
 
-       
-       }
-      if(mqttClient.connected()){ // only attempt to send when connected
+  if(currentMillis-previousMillis_forced>forced_interval){ // forced regular updates
+      intended_disconnect=false;
+      counter_connect=6;
+      counter_disconnect=0;
+      previousMillis_forced=currentMillis;
+      temp_sent=200;
+      hum_sent=200;
+      light_sent=0;
+      Serial.println("Sending forced Update...");
+    }
+
+  Serial.printf("\nIntended Disconnect: %d\nCounter Connect: %d\nCounter Disconnect: %d\n",intended_disconnect,counter_connect,counter_disconnect);
+
+  if(intended_disconnect && WiFi.isConnected()){
+    temp_sent=200;
+    hum_sent=200;
+    light_sent=0;
+    Serial.println("No temperature Change. Disconnecting from wifi");
+    disconnectFromWifi();
+  }
+  else if(!intended_disconnect && !WiFi.isConnected()){
+     wifiReconnectTimer.once(2, connectToWifi);
+  }
+}
+
+void publishToMqttBroker(){
+  if(mqttClient.connected()){ // only attempt to send when connected
          // Publish an MQTT message on topic esp/dht/light
        
         uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg*(3300/1024)).c_str());                            
-        Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub3);
+        Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub3);
         Serial.printf("Message: %.2f [mV]\n", light_avg*(3300/1024));
         light_sent=light_avg;
         
@@ -282,38 +273,55 @@ void loop() {
         hum_sent=hum_avg;
         
       }
-       
-    Serial.printf("Intended Disconnect: %d\n",intended_disconnect);
-
-    
-
-    if(intended_disconnect && WiFi.isConnected()){
-    temp_sent=200;
-    hum_sent=200;
-    light_sent=0;
-    Serial.println("No temperature Change. Disconnecting from wifi");
-    disconnectFromWifi();
+  else{
+    Serial.printf("Not publishing because not connected to WiFi\n");
   }
-  else if(!intended_disconnect && !WiFi.isConnected()){
-     wifiReconnectTimer.once(2, connectToWifi);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println();
+  pinMode(LEDPIN,OUTPUT);
+  digitalWrite(LEDPIN,LOW);
+  dht.begin();
+  wifiConnectHandler = WiFi.onStationModeGotIP(onWifiConnect);
+  wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
+  wifiManager.setConnectTimeout(600);
+//  wifiManager.resetSettings();// uncomment to reset stored wifi settings
+  mqttClient.onConnect(onMqttConnect);
+  mqttClient.onDisconnect(onMqttDisconnect);
+  //mqttClient.onSubscribe(onMqttSubscribe);
+  //mqttClient.onUnsubscribe(onMqttUnsubscribe);
+  mqttClient.onPublish(onMqttPublish);
+  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  // If your broker requires authentication (username and password), set them below
+  mqttClient.setCredentials(BROKER_USER, BROKER_PASSWORD);
+  
+  connectToWifi();
+}
+
+void loop() {
+  currentMillis = millis();
+  // Every X number of seconds (interval = 10 seconds) 
+  // it publishes a new MQTT message
+  if(currentMillis-previousMillis_light >= interval_light){
+    get_light_readings();
   }
-  // Send an hourly update whether or not the measurements didn't change
-    if(currentMillis-previousMillis_forced>forced_interval){
-      intended_disconnect=false;
-      counter_connect=6;
-      counter_disconnect=0;
-      previousMillis_forced=currentMillis;
-      temp_sent=200;
-      hum_sent=200;
-      light_sent=0;
-      Serial.println("Sending forced Update...");
-    }
-//    light_avg=0;
+
+  if (currentMillis - previousMillis_dht >= interval_dht) {
+    get_dht_readings();
+  }
+
+  if (currentMillis-previousMillis_send >= interval_send){
+      
+      previousMillis_send=currentMillis;
+      connect_intention(); // checks whether or not board should connect to wifi and subsequently calls for connect/disconnect
+      publishToMqttBroker();   
+
     counter_light_avg=0;
     counter_dht_avg=0;
   }
   else if(digitalRead(LEDPIN)){
       digitalWrite(LEDPIN,LOW);
     }
-  
 }
