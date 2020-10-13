@@ -80,7 +80,7 @@ Ticker mqttReconnectTimer;
 WiFiEventHandler wifiConnectHandler;
 WiFiEventHandler wifiDisconnectHandler;
 WiFiManager wifiManager;
-Ticker wifiReconnectTimer;
+// Ticker wifiReconnectTimer;
 
 // Time settings
 unsigned long previousMillis_dht = 0;   // Stores last time temperature was published
@@ -114,7 +114,8 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
   Serial.println("Disconnected from Wi-Fi.");
   mqttReconnectTimer.detach(); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
   if(!intended_disconnect){
-  wifiReconnectTimer.once(2, connectToWifi);
+  // wifiReconnectTimer.once(2, connectToWifi);
+  connectToWifi();
   }
 }
 
@@ -200,7 +201,7 @@ void get_dht_readings(){
 }
 
 void connect_intention(){
-  if(fabs(temp_avg-temp_old)<0.1 && fabs(hum_avg-hum_old)<0.1 && fabs(light_avg-light_old)<2){
+  if(fabs(temp_avg-temp_old)<0.2 && fabs(hum_avg-hum_old)<0.2 && fabs(light_avg-light_old)<6){
         if(counter_disconnect>=5){          
           intended_disconnect=true;
           counter_disconnect=0;         
@@ -245,17 +246,18 @@ void connect_intention(){
     disconnectFromWifi();
   }
   else if(!intended_disconnect && !WiFi.isConnected()){
-     wifiReconnectTimer.once(2, connectToWifi);
+    //  wifiReconnectTimer.once(2, connectToWifi);
+     connectToWifi();
   }
 }
 
 void publishToMqttBroker(){
   if(mqttClient.connected()){ // only attempt to send when connected
          // Publish an MQTT message on topic esp/dht/light
-       
-        uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg*(3300/1024)).c_str());                            
+        Serial.printf("Light avg send: %f, transformed: %f\n",light_avg,light_avg*((float)3300/(float)1024));
+        uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg*((float)3300/(float)1024)).c_str());                            
         Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub3);
-        Serial.printf("Message: %.2f [mV]\n", light_avg*(3300/1024));
+        Serial.printf("Message: %.2f [mV]\n", light_avg*((float)3300/(float)1024));
         light_sent=light_avg;
         
         // Publish an MQTT message on topic esp/dht/temperature
@@ -320,8 +322,10 @@ void loop() {
 
     counter_light_avg=0;
     counter_dht_avg=0;
+    
   }
   else if(digitalRead(LEDPIN)){
       digitalWrite(LEDPIN,LOW);
     }
+
 }
