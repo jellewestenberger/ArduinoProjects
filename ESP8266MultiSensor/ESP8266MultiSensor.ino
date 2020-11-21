@@ -11,8 +11,8 @@
 
 #include "DHT.h"
 #include <ESP8266WiFi.h>
-#include <DNSServer.h>
-#include <ESP8266WebServer.h>
+// #include <DNSServer.h>
+//#include <ESP8266WebServer.h>
 #include <WiFiManager.h>  
 #include <Ticker.h>
 #include <AsyncMqttClient.h>
@@ -34,14 +34,17 @@
 #define MQTT_PORT 1883
 
 // Temperature MQTT Topics
-#define MQTT_PUB_TEMP "homeassistant/dht/temperature"
-#define MQTT_PUB_HUM "homeassistant/dht/humidity"
-#define MQTT_PUB_LIGHT "homeassistant/dht/light"
+#define MQTT_PUB_TEMP "homeassistant/esp/temperature"
+#define MQTT_PUB_HUM "homeassistant/esp/humidity"
+#define MQTT_PUB_LIGHT "homeassistant/esp/light"
+#define MQTT_PUB_MOTION "homeassistant/esp/motion"
 
 // Digital pin connected to the DHT sensor
 #define DHTPIN 14  
-#define LEDPIN 3
+#define LEDPINWIFI 3
+#define LEDPINMOTION 12
 #define LIGHTSENSOR A0
+#define PIRPIN 13 // motion sensor in 
 
 // Uncomment whatever DHT sensor type you're using
 #define DHTTYPE DHT11   // DHT 11
@@ -67,7 +70,7 @@ float light_old;
 float light_sent;
 float temp_sent;
 float hum_sent;
-
+int motion_status = 3; 
 // Variables for controlinig intentional disconnect
 bool intended_disconnect=false;
 int counter_disconnect=0;
@@ -87,10 +90,14 @@ unsigned long previousMillis_dht = 0;   // Stores last time temperature was publ
 unsigned long previousMillis_send=0;
 unsigned long previousMillis_forced =0; // stores last time an hourly update was given (send values after an hour even when measurements were constant)
 unsigned long previousMillis_light = 0 ;
+unsigned long previousMillis_motion =0 ;
+unsigned long previousMillis_motion_detected = 0 ; 
 const long interval_dht = 10000;        // Interval at which to publish sensor readings
 const long interval_light = 2000;
 const long forced_interval = 600000; //every 10mins
 const long interval_send = 60000;
+const long interval_motion = 2000;
+const long interval_nomotion = 60000;
 unsigned long currentMillis= 1;
 
 void connectToWifi() {
@@ -153,7 +160,7 @@ void onMqttUnsubscribe(uint16_t packetId) {
 }*/
 
 void onMqttPublish(uint16_t packetId) {
-  digitalWrite(LEDPIN,HIGH);
+  digitalWrite(LEDPINWIFI,HIGH);
   Serial.print("Publish acknowledged.");
   Serial.print("  packetId: ");
   Serial.println(packetId);
@@ -173,6 +180,27 @@ void get_light_readings(){
     Serial.printf("Last light outlier: %f\n",light_outlier);
     }
   previousMillis_light=currentMillis;
+}
+
+void read_motion(){
+  if(digitalRead(PIRPIN)){
+    Serial.printf("Motion Detected\n");
+    digitalWrite(LEDPINMOTION,HIGH);
+    if(motion_status!=1){
+      motion_status=1;
+      publishToMqttBroker();
+    }
+    
+    previousMillis_motion_detected=currentMillis;
+  }
+  else{
+    Serial.printf("No Motion\n");
+    digitalWrite(LEDPINMOTION,LOW);
+    if(currentMillis-previousMillis_motion_detected>= interval_nomotion){
+      motion_status=0;
+    }
+  }
+  Serial.printf("Motion status: %d\n",motion_status);
 }
 
 void get_dht_readings(){
@@ -253,26 +281,31 @@ void connect_intention(){
 
 void publishToMqttBroker(){
   if(mqttClient.connected()){ // only attempt to send when connected
-         // Publish an MQTT message on topic esp/dht/light
+         // Publish an MQTT message light
         Serial.printf("Light avg send: %f, transformed: %f\n",light_avg,light_avg*((float)3300/(float)1024));
         uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg*((float)3300/(float)1024)).c_str());                            
         Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub3);
         Serial.printf("Message: %.2f [mV]\n", light_avg*((float)3300/(float)1024));
         light_sent=light_avg;
         
-        // Publish an MQTT message on topic esp/dht/temperature
-        
+        // Publish an MQTT message temperature
         uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 1, true, String(temp_avg).c_str());                            
         Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP, packetIdPub1);
         Serial.printf("Message: %.2f \n", temp_avg);
         temp_sent=temp_avg;
         
-        // Publish an MQTT message on topic esp/dht/humidity
+        // Publish an MQTT message humidity
         
         uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 1, true, String(hum_avg).c_str());                            
         Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_HUM, packetIdPub2);
         Serial.printf("Message: %.2f \n", hum_avg);
         hum_sent=hum_avg;
+
+        // Publish an MQTT message motion
+        
+        uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 1, true, String(motion_status).c_str());                            
+        Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
+        Serial.printf("Message: %d \n", motion_status);
         
       }
   else{
@@ -283,9 +316,14 @@ void publishToMqttBroker(){
 void setup() {
   Serial.begin(115200);
   Serial.println();
-  pinMode(LEDPIN,OUTPUT);
-  digitalWrite(LEDPIN,LOW);
+  pinMode(LEDPINWIFI,OUTPUT);
+  pinMode(PIRPIN,INPUT);
+  pinMode(LEDPINMOTION,OUTPUT);
+  digitalWrite(LEDPINWIFI,LOW);
   dht.begin();
+//  WiFi.disconnect();
+//  WiFi.softAPdisconnect(true);
+//  WiFi.mode(WIFI_STA);
   wifiConnectHandler = WiFi.onStationModeGotIP(onWifiConnect);
   wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
   wifiManager.setConnectTimeout(600);
@@ -324,8 +362,17 @@ void loop() {
     counter_dht_avg=0;
     
   }
-  else if(digitalRead(LEDPIN)){
-      digitalWrite(LEDPIN,LOW);
+  if(currentMillis-previousMillis_motion >= interval_motion){
+    previousMillis_motion=currentMillis;
+    read_motion();
+
+    
+
+  }
+
+
+  else if(digitalRead(LEDPINWIFI)){
+      digitalWrite(LEDPINWIFI,LOW);
     }
 
 }
