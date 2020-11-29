@@ -12,6 +12,8 @@
 #define MQTT_PUB_TEMP "homeassistant/esp2/temperature"
 #define MQTT_PUB_HUM "homeassistant/esp2/humidity"
 #define MQTT_PUB_MOTION "homeassistant/esp2/motion"
+#define MQTT_SUB_LED "homeassistant/esp/LED_command"
+#define MQTT_PUB_LED "homeassistant/esp/LED_state"
 
 // Wifi Credentials
 #ifndef __CREDENTIALS_H
@@ -46,6 +48,8 @@ int counter_dht_avg= 0;
 bool intended_disconnect=false;
 int counter_disconnect=0;
 int counter_connect=5;
+bool LED_ON = true;
+
 
 // Wifi and MQTT:
 AsyncMqttClient mqttClient;
@@ -106,6 +110,8 @@ void onMqttConnect(bool sessionPresent) {
   Serial.println("Connected to MQTT.");
   Serial.print("Session present: ");
   Serial.println(sessionPresent);
+  Serial.printf("Subscribing to %s\n", MQTT_SUB_LED);
+  uint16_t packetIdSub = mqttClient.subscribe(MQTT_SUB_LED, 1);
 }
 
 void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
@@ -116,7 +122,7 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
   }
 }
 
-/*void onMqttSubscribe(uint16_t packetId, uint8_t qos) {
+void onMqttSubscribe(uint16_t packetId, uint8_t qos) {
   Serial.println("Subscribe acknowledged.");
   Serial.print("  packetId: ");
   Serial.println(packetId);
@@ -128,10 +134,12 @@ void onMqttUnsubscribe(uint16_t packetId) {
   Serial.println("Unsubscribe acknowledged.");
   Serial.print("  packetId: ");
   Serial.println(packetId);
-}*/
+}
 
 void onMqttPublish(uint16_t packetId) {
-  digitalWrite(WIFILEDPIN,HIGH);
+  if(LED_ON){
+    digitalWrite(WIFILEDPIN,HIGH);
+  }
   Serial.print("Publish acknowledged.");
   Serial.print("  packetId: ");
   Serial.println(packetId);
@@ -139,10 +147,61 @@ void onMqttPublish(uint16_t packetId) {
 
 
 
+void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
+  Serial.println("Publish received.");
+  Serial.print("  topic: ");
+  Serial.println(topic);
+  Serial.print("  qos: ");
+  Serial.println(properties.qos);
+  Serial.print("  dup: ");
+  Serial.println(properties.dup);
+  Serial.print("  retain: ");
+  Serial.println(properties.retain);
+  Serial.print("  len: ");
+  Serial.println(len);
+  Serial.print("  index: ");
+  Serial.println(index);
+  Serial.print("  total: ");
+  Serial.println(total);
+  char checkplon[3];
+  char checkploff[4];
+  char led_state[4];
+  checkplon[2] = '\0';
+  checkploff[3] = '\0';
+  led_state[3] = '\0';
+  Serial.printf("payload: %s\n", payload);
+  strncpy(checkplon, payload, 2);
+  strncpy(checkploff, payload, 3);
+
+
+  Serial.printf("topic1: %s, topic2: %s, checkpayload1: %s, checkpayload2: %s\n", topic, MQTT_SUB_LED, checkplon, checkploff);
+
+  if (strcmp(topic, MQTT_SUB_LED) == 0) {
+    if (strcmp(checkplon, "ON") == 0) {
+      LED_ON = true;
+      led_state[2] = '\0';
+      strncpy(led_state, payload, 2);
+    }
+    else if (strcmp(checkploff, "OFF") == 0) {
+      LED_ON = false;
+      strncpy(led_state, payload, 3);
+
+    }
+        
+        uint16_t packetIdPub20 = mqttClient.publish(MQTT_PUB_LED, 1, true, led_state);
+        Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LED, packetIdPub20);
+        Serial.printf("Message: %s\n",led_state);
+  }
+}
+
+
+
 void read_motion(){
   if(digitalRead(PIRPIN)){
     Serial.printf("Motion Detected\n");
-    digitalWrite(MOTIONLEDPIN,HIGH);
+    if(LED_ON){
+      digitalWrite(MOTIONLEDPIN,HIGH);
+    }
     if(motion_status!=1){
       motion_status=1;
       intended_disconnect=false;
@@ -305,8 +364,9 @@ void setup() {
 //  wifiManager.resetSettings();// uncomment to reset stored wifi settings
   mqttClient.onConnect(onMqttConnect);
   mqttClient.onDisconnect(onMqttDisconnect);
-  //mqttClient.onSubscribe(onMqttSubscribe);
-  //mqttClient.onUnsubscribe(onMqttUnsubscribe);
+  mqttClient.onSubscribe(onMqttSubscribe);
+  mqttClient.onUnsubscribe(onMqttUnsubscribe);
+  mqttClient.onMessage(onMqttMessage);
   mqttClient.onPublish(onMqttPublish);
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   // If your broker requires authentication (username and password), set them below
