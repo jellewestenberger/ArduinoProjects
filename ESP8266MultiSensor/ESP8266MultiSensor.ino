@@ -1,14 +1,3 @@
-/*
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp8266-nodemcu-mqtt-publish-dht11-dht22-arduino/
-
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files.
-
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-*/
-
 #include "DHT.h"
 #include <ESP8266WiFi.h>
 // #include <DNSServer.h>
@@ -425,7 +414,7 @@ void setup() {
   wifiConnectHandler = WiFi.onStationModeGotIP(onWifiConnect);
   wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
   wifiManager.setConnectTimeout(600);
-  //  wifiManager.resetSettings();// uncomment to reset stored wifi settings
+//    wifiManager.resetSettings();// uncomment to reset stored wifi settings
   mqttClient.onConnect(onMqttConnect);
   mqttClient.onDisconnect(onMqttDisconnect);
   mqttClient.onSubscribe(onMqttSubscribe);
