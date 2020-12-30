@@ -38,8 +38,8 @@
 #define PIRPIN 13 // motion sensor in 
 
 // Uncomment whatever DHT sensor type you're using
-#define DHTTYPE DHT11   // DHT 11
-//#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
+//#define DHTTYPE DHT11   // DHT 11
+#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
 //#define DHTTYPE DHT21   // DHT 21 (AM2301)
 
 // Initialize DHT sensor
@@ -50,7 +50,7 @@ float temp;
 float hum;
 int light;
 float light_avg;
-float light_outlier = 300;
+//float light_outlier = 300;
 int counter_light_avg = 0;
 float temp_old;
 float temp_avg;
@@ -223,18 +223,18 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
 
 
 void get_light_readings() {
-  light = analogRead(LIGHTSENSOR) * (3300 / 1024);
+  light = analogRead(LIGHTSENSOR) * (float)(3300 / 1024);
   delay(100);
-  if (fabs(light) > 2000) {
-    light_outlier = light;
-    light = light_old;
-  }
+//  if (fabs(light) > 2000) {
+//    light_outlier = light;
+////    light = light_old;
+//  }
   light_avg = (light_avg * counter_light_avg + (float)light) / (counter_light_avg + 1);
   counter_light_avg += 1;
   Serial.printf("Measured light: %i, Average: %f [3.3/1024 V]\n", light, light_avg);
-  if (light_outlier != 300) {
-    Serial.printf("Last light outlier: %f\n", light_outlier);
-  }
+//  if (light_outlier != 300) {
+//    Serial.printf("Last light outlier: %f\n", light_outlier);
+//  }
   previousMillis_light = currentMillis;
 }
 
@@ -353,10 +353,10 @@ void connect_intention() {
 void publishToMqttBroker() {
   if (mqttClient.connected()) { // only attempt to send when connected
     // Publish an MQTT message light
-    Serial.printf("Light avg send: %f, transformed: %f\n", light_avg, light_avg * ((float)3300 / (float)1024));
-    uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg * ((float)3300 / (float)1024)).c_str());
+    Serial.printf("Light avg send: %f\n", light_avg );
+    uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg).c_str());
     Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub3);
-    Serial.printf("Message: %.2f [mV]\n", light_avg * ((float)3300 / (float)1024));
+    Serial.printf("Message: %.2f [mV]\n", light_avg);
     light_sent = light_avg;
 
     // Publish an MQTT message temperature
