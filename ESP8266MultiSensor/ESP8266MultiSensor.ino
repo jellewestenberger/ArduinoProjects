@@ -23,12 +23,12 @@
 #define MQTT_PORT 1883
 
 // MQTT Topics
-#define MQTT_PUB_TEMP "homeassistant/esp/temperature"
-#define MQTT_PUB_HUM "homeassistant/esp/humidity"
-#define MQTT_PUB_LIGHT "homeassistant/esp/light"
-#define MQTT_PUB_MOTION "homeassistant/esp/motion"
-#define MQTT_SUB_LED "homeassistant/esp/LED_command"
-#define MQTT_PUB_LED "homeassistant/esp/LED_state"
+#define MQTT_PUB_TEMP "homeassistant/esp1/temperature"
+#define MQTT_PUB_HUM "homeassistant/esp1/humidity"
+#define MQTT_PUB_LIGHT "homeassistant/esp1/light"
+#define MQTT_PUB_MOTION "homeassistant/esp1/motion"
+#define MQTT_SUB_LED "homeassistant/espall/LED_command"
+#define MQTT_PUB_LED "homeassistant/espall/LED_state"
 
 // Digital pin connected to the DHT sensor
 #define DHTPIN 14

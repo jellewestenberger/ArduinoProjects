@@ -12,8 +12,8 @@
 #define MQTT_PUB_TEMP "homeassistant/esp2/temperature"
 #define MQTT_PUB_HUM "homeassistant/esp2/humidity"
 #define MQTT_PUB_MOTION "homeassistant/esp2/motion"
-#define MQTT_SUB_LED "homeassistant/esp/LED_command"
-#define MQTT_PUB_LED "homeassistant/esp/LED_state"
+#define MQTT_SUB_LED "homeassistant/espall/LED_command"
+#define MQTT_PUB_LED "homeassistant/espall/LED_state"
 
 // Wifi Credentials
 #ifndef __CREDENTIALS_H
