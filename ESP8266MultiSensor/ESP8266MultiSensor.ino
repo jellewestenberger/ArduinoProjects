@@ -6,7 +6,8 @@
 #include <Ticker.h>
 #include <AsyncMqttClient.h>
 #include "Credentials.h" // contains WIFI_SSID and WIFI_PASSWORD (hidden away from git for obvious reasons)
-
+#include <ArduinoOTA.h>
+#include <ArduinoJson.h>
 // Wifi Credentials
 #ifndef __CREDENTIALS_H
 #define AP_PASSWORD "Your accesspoint password  here"
@@ -23,10 +24,14 @@
 #define MQTT_PORT 1883
 
 // MQTT Topics
-#define MQTT_PUB_TEMP "homeassistant/esp1/temperature"
-#define MQTT_PUB_HUM "homeassistant/esp1/humidity"
-#define MQTT_PUB_LIGHT "homeassistant/esp1/light"
-#define MQTT_PUB_MOTION "homeassistant/esp1/motion"
+#define MQTT_PUB_LIGHT "homeassistant/sensor/nodemcu1/light"
+#define MQTT_PUB_LIGHT_CONFIG "homeassistant/sensor/nodemcu1/light/config"
+#define MQTT_PUB_TEMP "homeassistant/sensor/nodemcu1/temperature"
+#define MQTT_PUB_TEMP_CONFIG "homeassistant/sensor/nodemcu1/temperature/config"
+#define MQTT_PUB_HUM "homeassistant/sensor/nodemcu1/humidity"
+#define MQTT_PUB_HUM_CONFIG "homeassistant/sensor/nodemcu1/humidity/config"
+#define MQTT_PUB_MOTION "homeassistant/binary_sensor/nodemcu1/motion"
+#define MQTT_PUB_MOTION_CONFIG "homeassistant/binary_sensor/nodemcu1/motion/config"
 #define MQTT_SUB_LED "homeassistant/espall/LED_command"
 #define MQTT_PUB_LED "homeassistant/espall/LED_state"
 
@@ -92,6 +97,70 @@ const long interval_motion = 2000;
 const long interval_nomotion = 60000;
 unsigned long currentMillis = 1;
 
+
+void publish_Config(){
+  
+  // temperature config
+  StaticJsonDocument<300> tempdoc;   
+  tempdoc["dev_cla"] = "temperature";
+  tempdoc["unit_of_meas"]= "C";
+  tempdoc["name"] = "temperature_sensor_1";
+  tempdoc["stat_t"] = MQTT_PUB_TEMP; 
+  
+  // humidity config
+  StaticJsonDocument<300> humdoc;
+  humdoc["dev_cla"] = "humidity";
+  humdoc["unit_of_meas"]= "%";
+  humdoc["name"] = "humidity_sensor_1";
+  humdoc["stat_t"] = MQTT_PUB_HUM; 
+
+  // motion config
+  StaticJsonDocument<300> motiondoc;
+  
+  motiondoc["dev_cla"] = "motion";
+  motiondoc["name"] = "motion_sensor_1";
+  motiondoc["stat_t"] = MQTT_PUB_MOTION; 
+
+  // light config
+  StaticJsonDocument<300> lightdoc;
+  lightdoc["dev_cla"] = "illuminance";
+  lightdoc["unit_of_meas"]= "mV"; 
+  lightdoc["name"] = "light_sensor_1";
+  lightdoc["stat_t"] = MQTT_PUB_LIGHT;
+  
+  
+  // publish
+  char buffer[300];
+  serializeJson(humdoc,buffer);
+  Serial.println("Buffer: ");
+  Serial.println(buffer);
+  uint16_t packetIdPub0 = mqttClient.publish(MQTT_PUB_HUM_CONFIG, 1, true, buffer);
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_HUM_CONFIG, packetIdPub0);
+  Serial.printf("Message: %s \n", buffer);
+
+  memset(buffer, 0, sizeof(buffer));
+
+  serializeJson(motiondoc,buffer);
+  packetIdPub0 = mqttClient.publish(MQTT_PUB_MOTION_CONFIG, 1, true, buffer);
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_MOTION_CONFIG, packetIdPub0);
+  Serial.printf("Message: %s \n", buffer);
+
+  memset(buffer, 0, sizeof(buffer));
+  
+  serializeJson(tempdoc,buffer);
+  packetIdPub0 = mqttClient.publish(MQTT_PUB_TEMP_CONFIG, 1, true, buffer);
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP_CONFIG, packetIdPub0);
+  Serial.printf("Message: %s \n", buffer);
+  
+  memset(buffer,0,sizeof(buffer));
+
+  serializeJson(lightdoc,buffer);
+  packetIdPub0 = mqttClient.publish(MQTT_PUB_LIGHT_CONFIG, 1, true, buffer);
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT_CONFIG, packetIdPub0);
+  Serial.printf("Message: %s \n", buffer);
+  
+}
+
 void connectToWifi() {
   if (!intended_disconnect) {
     Serial.println("Connecting to Wi-Fi...");
@@ -130,6 +199,7 @@ void onMqttConnect(bool sessionPresent) {
 
   Serial.printf("Subscribing to %s\n", MQTT_SUB_LED);
   uint16_t packetIdSub = mqttClient.subscribe(MQTT_SUB_LED, 1);
+  publish_Config();
 }
 
 
@@ -214,7 +284,7 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
 
     }
         
-        uint16_t packetIdPub20 = mqttClient.publish(MQTT_PUB_LED, 1, true, led_state);
+        uint16_t packetIdPub20 = mqttClient.publish(MQTT_PUB_LED, 0, false, led_state);
         Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LED, packetIdPub20);
         Serial.printf("Message: %s\n",led_state);
   }
@@ -354,29 +424,36 @@ void publishToMqttBroker() {
   if (mqttClient.connected()) { // only attempt to send when connected
     // Publish an MQTT message light
     Serial.printf("Light avg send: %f\n", light_avg );
-    uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 1, true, String(light_avg).c_str());
+    uint16_t packetIdPub3 = mqttClient.publish(MQTT_PUB_LIGHT, 0, false, String(light_avg).c_str());
     Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LIGHT, packetIdPub3);
     Serial.printf("Message: %.2f [mV]\n", light_avg);
     light_sent = light_avg;
 
     // Publish an MQTT message temperature
-    uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 1, true, String(temp_avg).c_str());
+    uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 0, false, String(temp_avg).c_str());
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP, packetIdPub1);
     Serial.printf("Message: %.2f \n", temp_avg);
     temp_sent = temp_avg;
 
     // Publish an MQTT message humidity
 
-    uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 1, true, String(hum_avg).c_str());
+    uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 0, false, String(hum_avg).c_str());
     Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_HUM, packetIdPub2);
     Serial.printf("Message: %.2f \n", hum_avg);
     hum_sent = hum_avg;
 
     // Publish an MQTT message motion
-
-    uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 1, true, String(motion_status).c_str());
+    if(motion_status==1){
+    uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "ON");
     Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
-    Serial.printf("Message: %d \n", motion_status);
+    Serial.printf("Message: %s \n", "ON");
+    }
+    else{
+    uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "OFF");
+    Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
+    Serial.printf("Message: %s \n", "OFF");
+
+    }
 
   }
   else {
@@ -390,9 +467,17 @@ void publishToMqttBroker_motionOnly() {
   if (mqttClient.connected()) { // only attempt to send when connected
     // Publish an MQTT message light
 
-    uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 1, true, String(motion_status).c_str());
+    if(motion_status==1){
+    uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "ON");
     Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
-    Serial.printf("Message: %d \n", motion_status);
+    Serial.printf("Message: %s \n", "ON");
+    }
+    else{
+    uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "OFF");
+    Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
+    Serial.printf("Message: %s \n", "OFF");
+
+    }
 
   }
   else {
@@ -426,9 +511,39 @@ void setup() {
   mqttClient.setCredentials(BROKER_USER, BROKER_PASSWORD);
 
   connectToWifi();
+
+  ArduinoOTA.onStart([](){
+  Serial.println("Start OTA Upload\n"); 
+});
+
+ArduinoOTA.onEnd([](){
+  Serial.println("\nEnd OTA Update\n"); 
+});
+
+ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r\n", (progress / (total / 100)));
+  });
+ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("\n OTA Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    Serial.println("\n");
+  });
+ArduinoOTA.setHostname("esp8266_motion_dht_light");
+ArduinoOTA.setPassword(OTAPASSWORD);
+ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+
 }
 
 void loop() {
+  ArduinoOTA.handle();
   currentMillis = millis();
   // Every X number of seconds (interval = 10 seconds)
   // it publishes a new MQTT message
