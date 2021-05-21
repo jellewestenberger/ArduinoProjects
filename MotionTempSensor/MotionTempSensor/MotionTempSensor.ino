@@ -5,14 +5,18 @@
 #include <Ticker.h> 
 #include <AsyncMqttClient.h> 
 #include <ArduinoOTA.h> 
+#include <ArduinoJson.h>
 #include "Credentials.h"
 
 #define MQTT_HOST IPAddress(192, 168, 178, 44)
 #define MQTT_PORT 1883
 
-#define MQTT_PUB_TEMP "homeassistant/esp2/temperature"
-#define MQTT_PUB_HUM "homeassistant/esp2/humidity"
-#define MQTT_PUB_MOTION "homeassistant/esp2/motion"
+#define MQTT_PUB_TEMP "homeassistant/sensor/nodemcu2/temperature"
+#define MQTT_PUB_TEMP_CONFIG "homeassistant/sensor/nodemcu2/temperature/config"
+#define MQTT_PUB_HUM "homeassistant/sensor/nodemcu2/humidity"
+#define MQTT_PUB_HUM_CONFIG "homeassistant/sensor/nodemcu2/humidity/config"
+#define MQTT_PUB_MOTION "homeassistant/binary_sensor/nodemcu2/motion"
+#define MQTT_PUB_MOTION_CONFIG "homeassistant/binary_sensor/nodemcu2/motion/config"
 #define MQTT_SUB_LED "homeassistant/espall/LED_command"
 #define MQTT_PUB_LED "homeassistant/espall/LED_state"
 
@@ -77,6 +81,53 @@ unsigned long currentMillis= 1;
 
 
   
+void publish_Config(){
+  
+  // temperature config
+  StaticJsonDocument<300> tempdoc;   
+  tempdoc["dev_cla"] = "temperature";
+  tempdoc["unit_of_meas"]= "C";
+  tempdoc["name"] = "temperature_sensor_2";
+  tempdoc["stat_t"] = MQTT_PUB_TEMP; 
+  
+  // humidity config
+  StaticJsonDocument<300> humdoc;
+  humdoc["dev_cla"] = "humidity";
+  humdoc["unit_of_meas"]= "%";
+  humdoc["name"] = "humidity_sensor_2";
+  humdoc["stat_t"] = MQTT_PUB_HUM; 
+
+  // motion config
+  StaticJsonDocument<300> motiondoc;
+  
+  motiondoc["dev_cla"] = "motion";
+  motiondoc["name"] = "motion_sensor_2";
+  motiondoc["stat_t"] = MQTT_PUB_MOTION; 
+  
+  // publish
+  char buffer[300];
+  serializeJson(humdoc,buffer);
+  Serial.println("Buffer: ");
+  Serial.println(buffer);
+  uint16_t packetIdPub0 = mqttClient.publish(MQTT_PUB_HUM_CONFIG, 1, true, buffer);
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_HUM_CONFIG, packetIdPub0);
+  Serial.printf("Message: %s \n", buffer);
+
+  memset(buffer, 0, sizeof(buffer));
+
+  serializeJson(motiondoc,buffer);
+  packetIdPub0 = mqttClient.publish(MQTT_PUB_MOTION_CONFIG, 1, true, buffer);
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_MOTION_CONFIG, packetIdPub0);
+  Serial.printf("Message: %s \n", buffer);
+
+  memset(buffer, 0, sizeof(buffer));
+  
+  serializeJson(tempdoc,buffer);
+  packetIdPub0 = mqttClient.publish(MQTT_PUB_TEMP_CONFIG, 1, true, buffer);
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP_CONFIG, packetIdPub0);
+  Serial.printf("Message: %s \n", buffer);
+  
+}
 
 void connectToWifi() {
   if(!intended_disconnect){
@@ -191,7 +242,7 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
 
     }
         
-        uint16_t packetIdPub20 = mqttClient.publish(MQTT_PUB_LED, 1, true, led_state);
+        uint16_t packetIdPub20 = mqttClient.publish(MQTT_PUB_LED,0, false, led_state);
         Serial.printf("\nPublishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_LED, packetIdPub20);
         Serial.printf("Message: %s\n",led_state);
   }
@@ -312,23 +363,29 @@ void publishToMqttBroker(){
   if(mqttClient.connected()){ // only attempt to send when connected
         
         // Publish an MQTT message temperature
-        uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 1, true, String(temp_avg).c_str());                            
+        uint16_t packetIdPub1 = mqttClient.publish(MQTT_PUB_TEMP, 0, false, String(temp_avg).c_str());                            
         Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", MQTT_PUB_TEMP, packetIdPub1);
         Serial.printf("Message: %.2f \n", temp_avg);
         temp_sent=temp_avg;
         
         // Publish an MQTT message humidity
         
-        uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 1, true, String(hum_avg).c_str());                            
+        uint16_t packetIdPub2 = mqttClient.publish(MQTT_PUB_HUM, 0, false, String(hum_avg).c_str());                            
         Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_HUM, packetIdPub2);
         Serial.printf("Message: %.2f \n", hum_avg);
         hum_sent=hum_avg;
 
         // Publish an MQTT message motion
-        
-        uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 1, true, String(motion_status).c_str());                            
+        if(motion_status == 1){
+        uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "ON");   
         Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
-        Serial.printf("Message: %d \n", motion_status);
+        Serial.printf("Message: %s\n", "ON");
+        }                         
+        else{
+          uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "OFF");   
+        Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
+        Serial.printf("Message: %s\n", "OFF");
+        }
         
       }
   else{
@@ -341,9 +398,16 @@ void publishToMqttBroker_motionOnly(){
   if(mqttClient.connected()){ // only attempt to send when connected
  
         
-        uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 1, true, String(motion_status).c_str());                            
+        if(motion_status == 1){
+        uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "ON");   
         Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
-        Serial.printf("Message: %d \n", motion_status);
+        Serial.printf("Message: %s\n", "ON");
+        }                         
+        else{
+          uint16_t packetIdPub4 = mqttClient.publish(MQTT_PUB_MOTION, 0, false, "OFF");   
+        Serial.printf("Publishing on topic %s at QoS 1, packetId %i: ", MQTT_PUB_MOTION, packetIdPub4);
+        Serial.printf("Message: %s\n", "OFF");
+        }
         
       }
   else{
@@ -405,6 +469,9 @@ ArduinoOTA.begin();
   Serial.println("Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
+
+  publish_Config();
 
 }
 
