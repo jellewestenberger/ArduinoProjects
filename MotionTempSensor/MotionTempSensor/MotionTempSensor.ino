@@ -4,6 +4,7 @@
 #include <WiFiManager.h> 
 #include <Ticker.h> 
 #include <AsyncMqttClient.h> 
+#include <ArduinoOTA.h> 
 #include "Credentials.h"
 
 #define MQTT_HOST IPAddress(192, 168, 178, 44)
@@ -74,6 +75,8 @@ unsigned long currentMillis= 1;
 
 // functions: 
 
+
+  
 
 void connectToWifi() {
   if(!intended_disconnect){
@@ -348,6 +351,8 @@ void publishToMqttBroker_motionOnly(){
   }
 }
 void setup() {
+  
+  
   Serial.begin(9600);
   Serial.println();
   pinMode(WIFILEDPIN,OUTPUT);
@@ -373,9 +378,38 @@ void setup() {
   mqttClient.setCredentials(BROKER_USER, BROKER_PASSWORD);
   
   connectToWifi();
+
+  ArduinoOTA.onStart([](){
+  Serial.println("Start OTA Upload\n"); 
+});
+
+ArduinoOTA.onEnd([](){
+  Serial.println("\nEnd OTA Update\n"); 
+});
+
+ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r\n", (progress / (total / 100)));
+  });
+ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("\n OTA Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    Serial.println("\n");
+  });
+ArduinoOTA.setHostname("esp8266_motion_dht");
+ArduinoOTA.setPassword(OTAPASSWORD);
+ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
 }
 
 void loop() {
+  ArduinoOTA.handle();
   currentMillis = millis();
   // Every X number of seconds (interval = 10 seconds) 
   // it publishes a new MQTT message
