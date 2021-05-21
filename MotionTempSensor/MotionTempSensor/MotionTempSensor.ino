@@ -86,7 +86,7 @@ void publish_Config(){
   // temperature config
   StaticJsonDocument<300> tempdoc;   
   tempdoc["dev_cla"] = "temperature";
-  tempdoc["unit_of_meas"]= "C";
+  tempdoc["unit_of_meas"]= "°C";
   tempdoc["name"] = "temperature_sensor_2";
   tempdoc["stat_t"] = MQTT_PUB_TEMP; 
   
@@ -166,6 +166,7 @@ void onMqttConnect(bool sessionPresent) {
   Serial.println(sessionPresent);
   Serial.printf("Subscribing to %s\n", MQTT_SUB_LED);
   uint16_t packetIdSub = mqttClient.subscribe(MQTT_SUB_LED, 1);
+  publish_Config();
 }
 
 void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
@@ -471,7 +472,7 @@ ArduinoOTA.begin();
   Serial.println(WiFi.localIP());
 
 
-  publish_Config();
+  
 
 }
 

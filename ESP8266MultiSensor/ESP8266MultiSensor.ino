@@ -103,7 +103,7 @@ void publish_Config(){
   // temperature config
   StaticJsonDocument<300> tempdoc;   
   tempdoc["dev_cla"] = "temperature";
-  tempdoc["unit_of_meas"]= "C";
+  tempdoc["unit_of_meas"]= "°C";
   tempdoc["name"] = "temperature_sensor_1";
   tempdoc["stat_t"] = MQTT_PUB_TEMP; 
   
