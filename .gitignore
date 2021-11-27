@@ -1,4 +1,5 @@
 .*vscode* 
 *Credentials.h
-/toolsl i b r a r i e s / libraries/
- 
+/tools
+/libraries
+*/ArduinoOutput 
