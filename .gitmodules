@@ -1,0 +1,3 @@
+[submodule "SolarWeatherStation"]
+	path = SolarWeatherStation
+	url = git@github.com:jellewestenberger/SolarWeatherStation.git
