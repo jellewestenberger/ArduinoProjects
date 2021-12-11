@@ -54,7 +54,7 @@ bool intended_disconnect=false;
 int counter_disconnect=0;
 int counter_connect=5;
 bool LED_ON = true;
-
+char hostname[10] = "ESPNode-2";
 
 // Wifi and MQTT:
 AsyncMqttClient mqttClient;
@@ -428,6 +428,7 @@ void setup() {
 //  WiFi.disconnect();
 //  WiFi.softAPdisconnect(true);
 //  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(hostname);
   wifiConnectHandler = WiFi.onStationModeGotIP(onWifiConnect);
   wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
   wifiManager.setConnectTimeout(600);
@@ -464,7 +465,7 @@ ArduinoOTA.onError([](ota_error_t error) {
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
     Serial.println("\n");
   });
-ArduinoOTA.setHostname("esp8266_motion_dht");
+ArduinoOTA.setHostname(hostname);
 ArduinoOTA.setPassword(OTAPASSWORD);
 ArduinoOTA.begin();
   Serial.println("Ready");
@@ -490,7 +491,7 @@ void loop() {
   if (currentMillis-previousMillis_send >= interval_send){
       
       previousMillis_send=currentMillis;
-      connect_intention(); // checks whether or not board should connect to wifi and subsequently calls for connect/disconnect
+      // connect_intention(); // checks whether or not board should connect to wifi and subsequently calls for connect/disconnect
       publishToMqttBroker();   
 
     counter_dht_avg=0;
