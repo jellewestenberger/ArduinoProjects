@@ -106,6 +106,7 @@ void publish_Config(){
   tempdoc["unit_of_meas"]= "°C";
   tempdoc["name"] = "temperature_sensor_1";
   tempdoc["stat_t"] = MQTT_PUB_TEMP; 
+  tempdoc["stat_cla"] = "measurement";
   
   // humidity config
   StaticJsonDocument<300> humdoc;
@@ -113,6 +114,7 @@ void publish_Config(){
   humdoc["unit_of_meas"]= "%";
   humdoc["name"] = "humidity_sensor_1";
   humdoc["stat_t"] = MQTT_PUB_HUM; 
+  humdoc["stat_cla"] = "measurement";
 
   // motion config
   StaticJsonDocument<300> motiondoc;
@@ -127,6 +129,7 @@ void publish_Config(){
   lightdoc["unit_of_meas"]= "mV"; 
   lightdoc["name"] = "light_sensor_1";
   lightdoc["stat_t"] = MQTT_PUB_LIGHT;
+  lightdoc["stat_cla"]  = "measurement";
   
   
   // publish
