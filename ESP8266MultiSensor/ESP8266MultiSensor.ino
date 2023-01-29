@@ -125,7 +125,7 @@ void publish_Config(){
 
   // light config
   StaticJsonDocument<300> lightdoc;
-  lightdoc["dev_cla"] = "illuminance";
+  lightdoc["dev_cla"] = "voltage";
   lightdoc["unit_of_meas"]= "mV"; 
   lightdoc["name"] = "light_sensor_1";
   lightdoc["stat_t"] = MQTT_PUB_LIGHT;
